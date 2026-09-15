@@ -55,6 +55,14 @@ header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:1
 .count-badge b{color:var(--saffron);}
 
 /* ---- Tabs ---- */
+.group-row{display:flex;align-items:center;gap:10px;margin-bottom:16px;}
+.group-row label{font-size:13px;color:var(--muted);white-space:nowrap;}
+.group-row select{
+  flex:1;background:var(--bg-1);border:1px solid var(--line);border-radius:12px;
+  padding:10px 12px;color:var(--ink);font-size:14px;font-family:'Noto Sans KR',sans-serif;
+  cursor:pointer;
+}
+.group-row select:focus{outline:none;border-color:var(--saffron);}
 .tabs{display:flex;gap:6px;background:var(--bg-1);border:1px solid var(--line);border-radius:14px;padding:5px;margin-bottom:22px;}
 .tab{
   flex:1;text-align:center;padding:10px 8px;border-radius:10px;cursor:pointer;
@@ -218,6 +226,11 @@ footer.foot a{color:var(--muted);}
     <div class="count-badge">暗記完了 <b id="knownCount">0</b> / 1671</div>
   </header>
 
+  <div class="group-row">
+    <label for="groupSelect">グループ</label>
+    <select id="groupSelect"></select>
+  </div>
+
   <nav class="tabs">
     <div class="tab active" data-view="card">🗂 カード</div>
     <div class="tab" data-view="list">🔎 一覧</div>
@@ -316,6 +329,43 @@ loadState();
 
 function vocabByNo(no){ return VOCAB[no-1]; }
 
+/* ---------- Grouping (40 words per set) ---------- */
+const GROUP_SIZE = 40;
+const GROUP_COUNT = Math.ceil(VOCAB.length / GROUP_SIZE);
+let currentGroup = 0; // 0 = all words
+
+function groupRange(g){
+  const start = (g - 1) * GROUP_SIZE + 1;
+  const end = Math.min(g * GROUP_SIZE, VOCAB.length);
+  return [start, end];
+}
+function vocabInGroup(g){
+  if(g === 0) return VOCAB.slice();
+  const [s, e] = groupRange(g);
+  return VOCAB.filter(v => v.no >= s && v.no <= e);
+}
+
+const groupSelect = document.getElementById('groupSelect');
+(function populateGroupSelect(){
+  const allOpt = document.createElement('option');
+  allOpt.value = 0;
+  allOpt.textContent = `すべて (1〜${VOCAB.length})`;
+  groupSelect.appendChild(allOpt);
+  for(let g = 1; g <= GROUP_COUNT; g++){
+    const [s, e] = groupRange(g);
+    const opt = document.createElement('option');
+    opt.value = g;
+    opt.textContent = `${g}日目 (${s}〜${e})`;
+    groupSelect.appendChild(opt);
+  }
+})();
+groupSelect.addEventListener('change', ()=>{
+  currentGroup = parseInt(groupSelect.value, 10);
+  applyCardFilter();
+  renderList();
+  if(quizStarted) startQuiz();
+});
+
 /* ---------- Text-to-speech (Korean pronunciation) ---------- */
 let autoplayOn = true;
 let koVoice = null;
@@ -368,14 +418,15 @@ const progressFill = document.getElementById('cardProgressFill');
 const progressLabel = document.getElementById('cardProgressLabel');
 
 function applyCardFilter(){
+  const base = vocabInGroup(currentGroup);
   let list;
-  if(cardFilter === 'unknown') list = VOCAB.filter(v=>!known[v.no]);
-  else if(cardFilter === 'known') list = VOCAB.filter(v=>known[v.no]);
-  else if(cardFilter === 'star') list = VOCAB.filter(v=>starred[v.no]);
-  else list = VOCAB.slice();
+  if(cardFilter === 'unknown') list = base.filter(v=>!known[v.no]);
+  else if(cardFilter === 'known') list = base.filter(v=>known[v.no]);
+  else if(cardFilter === 'star') list = base.filter(v=>starred[v.no]);
+  else list = base.slice();
   cardOrder = list.map(v=>v.no);
   cardPos = 0;
-  if(cardOrder.length === 0){ cardOrder = [VOCAB[0].no]; }
+  if(cardOrder.length === 0){ cardOrder = [(base[0] || VOCAB[0]).no]; }
   renderCard();
 }
 
@@ -449,7 +500,7 @@ knowBtn.addEventListener('click', ()=>{
   renderCard();
 });
 
-renderCard();
+applyCardFilter();
 
 /* ---------- LIST VIEW ---------- */
 const JAMO = ['가','나','다','라','마','바','사','아','자','차','카','타','파','하'];
@@ -486,7 +537,7 @@ function initialConsonantMatch(word, jamoChar){
 
 function renderList(){
   const q = searchInput.value.trim().toLowerCase();
-  let list = VOCAB.filter(v=>{
+  let list = vocabInGroup(currentGroup).filter(v=>{
     let ok = true;
     if(q) ok = v.kr.toLowerCase().includes(q) || v.jp.toLowerCase().includes(q);
     if(ok && activeJamo) ok = initialConsonantMatch(v.kr, activeJamo);
@@ -544,7 +595,8 @@ function shuffleArr(arr){
 
 function startQuiz(){
   quizStarted = true;
-  quizPool = shuffleArr(VOCAB.slice()).slice(0, 20);
+  const pool = vocabInGroup(currentGroup);
+  quizPool = shuffleArr(pool.slice()).slice(0, Math.min(20, pool.length));
   quizIdx = 0;
   quizScore = 0;
   quizAnswered = false;
@@ -608,6 +660,9 @@ function renderQuiz(){
     renderQuiz();
   });
 }
+</script>
+</body>
+</html>
 </script>
 </body>
 </html>
